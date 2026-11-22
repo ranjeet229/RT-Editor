@@ -6,7 +6,6 @@ import * as Y from "yjs"
 import { SocketIOProvider } from "y-socket.io"
 
 function App() {
-
   const editorRef = useRef(null)
   const providerRef = useRef(null)
   const bindingRef = useRef(null)
@@ -38,81 +37,81 @@ function App() {
   useEffect(() => {
     if (!username || !editorReady || !editorRef.current) return
 
-      providerRef.current?.destroy()
-      bindingRef.current?.destroy()
+    providerRef.current?.destroy()
+    bindingRef.current?.destroy()
 
-      const provider = new SocketIOProvider(
-        "http://localhost:3000",
-        "monaco",
-        ydoc,
-        { autoConnect: true }
-      )
-      providerRef.current = provider
-      const now = Date.now()
-      provider.awareness.setLocalStateField("user", {
-        username,
-        heartbeat: now
+    const provider = new SocketIOProvider(
+      "http://localhost:3000",
+      "monaco",
+      ydoc,
+      { autoConnect: true }
+    )
+    providerRef.current = provider
+    const now = Date.now()
+    provider.awareness.setLocalStateField("user", {
+      username,
+      heartbeat: now
+    })
+
+    const updateUsers = () => {
+      const states = Array.from(provider.awareness.getStates().entries())
+      const uniqueUsers = new Map()
+
+      states.forEach(([clientId, state]) => {
+        const user = state?.user
+        const heartbeat = user?.heartbeat
+        const userName = user?.username
+
+        if (
+          userName &&
+          typeof heartbeat === "number" &&
+          Date.now() - heartbeat < 15000
+        ) {
+          uniqueUsers.set(userName, {
+            id: clientId,
+            username: userName
+          })
+        }
       })
 
-      const updateUsers = () => {
-        const states = Array.from(provider.awareness.getStates().entries())
-        const uniqueUsers = new Map()
+      setUsers(Array.from(uniqueUsers.values()))
+    }
 
-        states.forEach(([clientId, state]) => {
-          const user = state?.user
-          const heartbeat = user?.heartbeat
-          const userName = user?.username
+    updateUsers()
+    provider.awareness.on("change", updateUsers)
 
-          if (
-            userName &&
-            typeof heartbeat === "number" &&
-            Date.now() - heartbeat < 15000
-          ) {
-            uniqueUsers.set(userName, {
-              id: clientId,
-              username: userName
-            })
-          }
-        })
+    const heartbeatInterval = window.setInterval(() => {
+      provider.awareness.setLocalStateField("user", {
+        username,
+        heartbeat: Date.now()
+      })
+    }, 5000)
 
-        setUsers(Array.from(uniqueUsers.values()))
-      }
+    const staleUserInterval = window.setInterval(updateUsers, 5000)
 
-      updateUsers()
-      provider.awareness.on("change", updateUsers)
+    function handleBeforeUnload() {
+      provider.awareness.setLocalStateField("user", null)
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload)
 
-      const heartbeatInterval = window.setInterval(() => {
-        provider.awareness.setLocalStateField("user", {
-          username,
-          heartbeat: Date.now()
-        })
-      }, 5000)
+    bindingRef.current = new MonacoBinding(
+      yText,
+      editorRef.current.getModel(),
+      new Set([editorRef.current]),
+      provider.awareness
+    )
 
-      const staleUserInterval = window.setInterval(updateUsers, 5000)
-
-      function handleBeforeUnload() {
-        provider.awareness.setLocalStateField("user", null)
-      }
-      window.addEventListener("beforeunload", handleBeforeUnload)
-
-      bindingRef.current = new MonacoBinding(
-        yText,
-        editorRef.current.getModel(),
-        new Set([editorRef.current]),
-        provider.awareness
-      )
-
-      return () => {
-        provider.awareness.off("change", updateUsers)
-        provider.awareness.setLocalStateField("user", null)
-        window.clearInterval(heartbeatInterval)
-        window.clearInterval(staleUserInterval)
-        window.removeEventListener("beforeunload", handleBeforeUnload)
-        bindingRef.current?.destroy()
-        provider.destroy()
-        bindingRef.current = null
-        providerRef.current = null
-      }
+    return () => {
+      provider.awareness.off("change", updateUsers)
+      provider.awareness.setLocalStateField("user", null)
+      window.clearInterval(heartbeatInterval)
+      window.clearInterval(staleUserInterval)
+      window.removeEventListener("beforeunload", handleBeforeUnload)
+      bindingRef.current?.destroy()
+      provider.destroy()
+      bindingRef.current = null
+      providerRef.current = null
+    }
   }, [
     editorReady,
     username,
@@ -160,7 +159,6 @@ function App() {
           height="100%"
           width="100%"
           defaultLanguage="javascript"
-          // defaultValue="// some comment"
           theme="vs-dark"
           onMount={handleMount}
         />
